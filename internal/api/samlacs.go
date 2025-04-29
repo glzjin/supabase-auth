@@ -223,7 +223,13 @@ func (a *API) handleSamlAcs(w http.ResponseWriter, r *http.Request) error {
 	// Extract roles from claims
 	roles, ok := claims["roles"].(string)
 	if !ok || roles == "" {
+		roles = assertion.Roles()
+	}
+
+	if roles == "" {
 		return apierrors.NewBadRequestError(apierrors.ErrorCodeValidationFailed, "SAML Assertion does not contain roles")
+	} else {
+		claims["roles"] = roles
 	}
 
 	// Split roles into a slice

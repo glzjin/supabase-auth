@@ -136,6 +136,27 @@ func (a *SAMLAssertion) Phone() string {
 	return ""
 }
 
+// Roles returns a list of roles extracted from the SAML assertion.
+func (a *SAMLAssertion) Roles() string {
+	attributeNames := []string{
+		"urn:oid:2.5.4.32", // Example OID for role, replace with actual if available
+		"http://schemas.xmlsoap.org/ws/2005/05/identity/claims/role",
+		"http://schemas.microsoft.com/ws/2008/06/identity/claims/role",
+		"roles",
+		"role",
+	}
+
+	for _, name := range attributeNames {
+		for _, attr := range a.Attribute(name) {
+			if attr.Value != "" {
+				return attr.Value
+			}
+		}
+	}
+
+	return ""
+}
+
 // Process processes this assertion according to the SAMLAttributeMapping. Never returns nil.
 func (a *SAMLAssertion) Process(mapping models.SAMLAttributeMapping) map[string]interface{} {
 	ret := make(map[string]interface{})
