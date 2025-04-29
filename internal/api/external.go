@@ -572,6 +572,8 @@ func (a *API) Provider(ctx context.Context, name string, scopes string) (provide
 		return provider.NewLinkedinProvider(config.External.Linkedin, scopes)
 	case "linkedin_oidc":
 		return provider.NewLinkedinOIDCProvider(config.External.LinkedinOIDC, scopes)
+	case "logto":
+		return provider.NewLogtoProvider(ctx, config.External.Logto, scopes)
 	case "notion":
 		return provider.NewNotionProvider(config.External.Notion)
 	case "spotify":
@@ -591,7 +593,7 @@ func (a *API) Provider(ctx context.Context, name string, scopes string) (provide
 	case "zoom":
 		return provider.NewZoomProvider(config.External.Zoom)
 	default:
-		return nil, fmt.Errorf("Provider %s could not be found", name)
+		return nil, fmt.Errorf("provider %s not found", name)
 	}
 }
 

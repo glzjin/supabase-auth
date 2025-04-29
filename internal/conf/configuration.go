@@ -331,6 +331,7 @@ type ProviderConfiguration struct {
 	Keycloak                OAuthProviderConfiguration     `json:"keycloak"`
 	Linkedin                OAuthProviderConfiguration     `json:"linkedin"`
 	LinkedinOIDC            OAuthProviderConfiguration     `json:"linkedin_oidc" envconfig:"LINKEDIN_OIDC"`
+	Logto                   OAuthProviderConfiguration     `json:"logto"`
 	Spotify                 OAuthProviderConfiguration     `json:"spotify"`
 	Slack                   OAuthProviderConfiguration     `json:"slack"`
 	SlackOIDC               OAuthProviderConfiguration     `json:"slack_oidc" envconfig:"SLACK_OIDC"`
