@@ -252,7 +252,7 @@ func (a *API) handleSamlAcs(w http.ResponseWriter, r *http.Request) error {
 		}
 	}
 
-	if !roleAllowed {
+	if !roleAllowed && a.config.SAML.AllowRoles != "" {
 		return apierrors.NewForbiddenError(apierrors.ErrorCodeSAMLRoleNotAllowed, "User's roles are not allowed")
 	}
 
