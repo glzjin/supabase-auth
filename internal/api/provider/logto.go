@@ -36,13 +36,16 @@ type LogtoIDTokenClaims struct {
 }
 
 type LogtoUserInfo struct {
-	Sub           string `json:"sub"`
-	Email         string `json:"email"`
-	EmailVerified bool   `json:"email_verified"`
-	Name          string `json:"name"`
-	Picture       string `json:"picture"`
-	Phone         string `json:"phone"`
-	PhoneVerified bool   `json:"phone_verified"`
+	Sub                 string  `json:"sub"`
+	Name                *string `json:"name"`
+	Picture             *string `json:"picture"`
+	UpdatedAt           int64   `json:"updated_at"`
+	Username            *string `json:"username"`
+	CreatedAt           int64   `json:"created_at"`
+	Email               *string `json:"email"`
+	EmailVerified       bool    `json:"email_verified"`
+	PhoneNumber         string  `json:"phone_number"`
+	PhoneNumberVerified bool    `json:"phone_number_verified"`
 }
 
 type OpenIDConfiguration struct {
@@ -208,42 +211,52 @@ func (p *LogtoProvider) GetUserData(ctx context.Context, token *oauth2.Token) (*
 	}
 
 	logrus.WithFields(logrus.Fields{
-		"sub":            userInfo.Sub,
-		"email":          userInfo.Email,
-		"email_verified": userInfo.EmailVerified,
-		"phone":          userInfo.Phone,
-		"phone_verified": userInfo.PhoneVerified,
-		"name":           userInfo.Name,
+		"sub":                   userInfo.Sub,
+		"email":                 userInfo.Email,
+		"email_verified":        userInfo.EmailVerified,
+		"phone_number":          userInfo.PhoneNumber,
+		"phone_number_verified": userInfo.PhoneNumberVerified,
+		"name":                  userInfo.Name,
 	}).Info("Successfully parsed user info from Logto")
 
 	var data UserProvidedData
 
 	// 如果存在手机号，优先使用手机号作为主要联系方式
-	if userInfo.Phone != "" {
+	if userInfo.PhoneNumber != "" {
 		data.Emails = append(data.Emails, Email{
-			Email:    userInfo.Phone,
-			Verified: userInfo.PhoneVerified,
+			Email:    userInfo.PhoneNumber,
+			Verified: userInfo.PhoneNumberVerified,
 			Primary:  true,
 		})
-		logrus.WithField("phone", userInfo.Phone).Info("Using phone as primary contact")
-	} else if userInfo.Email != "" {
+		logrus.WithField("phone", userInfo.PhoneNumber).Info("Using phone as primary contact")
+	} else if userInfo.Email != nil && *userInfo.Email != "" {
 		data.Emails = append(data.Emails, Email{
-			Email:    userInfo.Email,
+			Email:    *userInfo.Email,
 			Verified: userInfo.EmailVerified,
 			Primary:  true,
 		})
-		logrus.WithField("email", userInfo.Email).Info("Using email as primary contact")
+		logrus.WithField("email", *userInfo.Email).Info("Using email as primary contact")
+	}
+
+	var name string
+	if userInfo.Name != nil {
+		name = *userInfo.Name
+	}
+
+	var picture string
+	if userInfo.Picture != nil {
+		picture = *userInfo.Picture
 	}
 
 	data.Metadata = &Claims{
 		Issuer:  p.config.Issuer,
 		Subject: userInfo.Sub,
-		Name:    userInfo.Name,
-		Picture: userInfo.Picture,
+		Name:    name,
+		Picture: picture,
 
 		// To be deprecated
-		AvatarURL:  userInfo.Picture,
-		FullName:   userInfo.Name,
+		AvatarURL:  picture,
+		FullName:   name,
 		ProviderId: userInfo.Sub,
 	}
 
