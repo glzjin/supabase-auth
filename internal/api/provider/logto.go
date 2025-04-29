@@ -44,6 +44,15 @@ type LogtoUserInfo struct {
 	PhoneVerified bool   `json:"phone_verified"`
 }
 
+type OpenIDConfiguration struct {
+	Issuer                string   `json:"issuer"`
+	AuthorizationEndpoint string   `json:"authorization_endpoint"`
+	TokenEndpoint         string   `json:"token_endpoint"`
+	UserInfoEndpoint      string   `json:"userinfo_endpoint"`
+	JwksURI               string   `json:"jwks_uri"`
+	ScopesSupported       []string `json:"scopes_supported"`
+}
+
 func parseLogtoIDToken(token *oidc.IDToken) (*oidc.IDToken, *UserProvidedData, error) {
 	var claims LogtoIDTokenClaims
 	if err := token.Claims(&claims); err != nil {
@@ -77,12 +86,36 @@ func parseLogtoIDToken(token *oidc.IDToken) (*oidc.IDToken, *UserProvidedData, e
 
 type LogtoProvider struct {
 	*oauth2.Config
-	oidc *oidc.Provider
+	oidc   *oidc.Provider
+	config *OpenIDConfiguration
 }
 
 func NewLogtoProvider(ctx context.Context, ext conf.OAuthProviderConfiguration, scopes string) (OAuthProvider, error) {
 	if err := ext.ValidateOAuth(); err != nil {
 		return nil, err
+	}
+
+	issuerURL := ext.URL
+	if issuerURL == "" {
+		return nil, fmt.Errorf("missing Logto issuer URL")
+	}
+
+	// 获取 OpenID 配置
+	configURL := issuerURL + "/.well-known/openid-configuration"
+	resp, err := http.Get(configURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get OpenID configuration: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("failed to get OpenID configuration: status=%d body=%s", resp.StatusCode, string(body))
+	}
+
+	var config OpenIDConfiguration
+	if err := json.NewDecoder(resp.Body).Decode(&config); err != nil {
+		return nil, fmt.Errorf("failed to decode OpenID configuration: %w", err)
 	}
 
 	oauthScopes := []string{
@@ -96,12 +129,7 @@ func NewLogtoProvider(ctx context.Context, ext conf.OAuthProviderConfiguration, 
 		oauthScopes = append(oauthScopes, strings.Split(scopes, ",")...)
 	}
 
-	issuerURL := ext.URL
-	if issuerURL == "" {
-		return nil, fmt.Errorf("missing Logto issuer URL")
-	}
-
-	oidcProvider, err := oidc.NewProvider(ctx, issuerURL)
+	oidcProvider, err := oidc.NewProvider(ctx, config.Issuer)
 	if err != nil {
 		return nil, err
 	}
@@ -110,21 +138,41 @@ func NewLogtoProvider(ctx context.Context, ext conf.OAuthProviderConfiguration, 
 		Config: &oauth2.Config{
 			ClientID:     ext.ClientID[0],
 			ClientSecret: ext.Secret,
-			Endpoint:     oidcProvider.Endpoint(),
-			Scopes:       oauthScopes,
-			RedirectURL:  ext.RedirectURI,
+			Endpoint: oauth2.Endpoint{
+				AuthURL:  config.AuthorizationEndpoint,
+				TokenURL: config.TokenEndpoint,
+			},
+			Scopes:      oauthScopes,
+			RedirectURL: ext.RedirectURI,
 		},
-		oidc: oidcProvider,
+		oidc:   oidcProvider,
+		config: &config,
 	}, nil
 }
 
 func (p *LogtoProvider) GetOAuthToken(code string) (*oauth2.Token, error) {
-	return p.Exchange(context.Background(), code)
+	ctx := context.Background()
+	token, err := p.Exchange(ctx, code)
+	if err != nil {
+		return nil, fmt.Errorf("failed to exchange code for token: %w", err)
+	}
+
+	// 验证 ID token
+	verifier := p.oidc.Verifier(&oidc.Config{
+		ClientID: p.ClientID,
+	})
+
+	_, err = verifier.Verify(ctx, token.Extra("id_token").(string))
+	if err != nil {
+		return nil, fmt.Errorf("failed to verify ID token: %w", err)
+	}
+
+	return token, nil
 }
 
 func (p *LogtoProvider) GetUserData(ctx context.Context, token *oauth2.Token) (*UserProvidedData, error) {
 	// 使用 access token 获取用户信息
-	req, err := http.NewRequestWithContext(ctx, "GET", p.oidc.Endpoint().AuthURL+"/userinfo", nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", p.config.UserInfoEndpoint, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create user info request: %w", err)
 	}
@@ -166,7 +214,7 @@ func (p *LogtoProvider) GetUserData(ctx context.Context, token *oauth2.Token) (*
 	}
 
 	data.Metadata = &Claims{
-		Issuer:  p.oidc.Endpoint().AuthURL,
+		Issuer:  p.config.Issuer,
 		Subject: userInfo.Sub,
 		Name:    userInfo.Name,
 		Picture: userInfo.Picture,
