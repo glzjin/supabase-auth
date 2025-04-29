@@ -66,6 +66,7 @@ type OAuthProviderConfiguration struct {
 	ApiURL         string   `json:"api_url" split_words:"true"`
 	Enabled        bool     `json:"enabled"`
 	SkipNonceCheck bool     `json:"skip_nonce_check" split_words:"true"`
+	AllowRoles     string   `json:"allow_roles" split_words:"true"`
 }
 
 type AnonymousProviderConfiguration struct {

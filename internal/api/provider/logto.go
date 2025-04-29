@@ -36,16 +36,17 @@ type LogtoIDTokenClaims struct {
 }
 
 type LogtoUserInfo struct {
-	Sub                 string  `json:"sub"`
-	Name                *string `json:"name"`
-	Picture             *string `json:"picture"`
-	UpdatedAt           int64   `json:"updated_at"`
-	Username            *string `json:"username"`
-	CreatedAt           int64   `json:"created_at"`
-	Email               *string `json:"email"`
-	EmailVerified       bool    `json:"email_verified"`
-	PhoneNumber         string  `json:"phone_number"`
-	PhoneNumberVerified bool    `json:"phone_number_verified"`
+	Sub                 string   `json:"sub"`
+	Name                *string  `json:"name"`
+	Picture             *string  `json:"picture"`
+	UpdatedAt           int64    `json:"updated_at"`
+	Username            *string  `json:"username"`
+	CreatedAt           int64    `json:"created_at"`
+	Email               *string  `json:"email"`
+	EmailVerified       bool     `json:"email_verified"`
+	PhoneNumber         string   `json:"phone_number"`
+	PhoneNumberVerified bool     `json:"phone_number_verified"`
+	Roles               []string `json:"roles"`
 }
 
 type OpenIDConfiguration struct {
@@ -90,8 +91,9 @@ func parseLogtoIDToken(token *oidc.IDToken) (*oidc.IDToken, *UserProvidedData, e
 
 type LogtoProvider struct {
 	*oauth2.Config
-	oidc   *oidc.Provider
-	config *OpenIDConfiguration
+	oidc       *oidc.Provider
+	config     *OpenIDConfiguration
+	allowRoles []string
 }
 
 func NewLogtoProvider(ctx context.Context, ext conf.OAuthProviderConfiguration, scopes string) (OAuthProvider, error) {
@@ -127,6 +129,7 @@ func NewLogtoProvider(ctx context.Context, ext conf.OAuthProviderConfiguration, 
 		"profile",
 		"email",
 		"phone",
+		"roles",
 	}
 
 	if scopes != "" {
@@ -136,6 +139,15 @@ func NewLogtoProvider(ctx context.Context, ext conf.OAuthProviderConfiguration, 
 	oidcProvider, err := oidc.NewProvider(ctx, config.Issuer)
 	if err != nil {
 		return nil, err
+	}
+
+	// 解析允许的角色
+	var allowRoles []string
+	if ext.AllowRoles != "" {
+		allowRoles = strings.Split(ext.AllowRoles, ",")
+		for i, role := range allowRoles {
+			allowRoles[i] = strings.TrimSpace(role)
+		}
 	}
 
 	return &LogtoProvider{
@@ -149,8 +161,9 @@ func NewLogtoProvider(ctx context.Context, ext conf.OAuthProviderConfiguration, 
 			Scopes:      oauthScopes,
 			RedirectURL: ext.RedirectURI,
 		},
-		oidc:   oidcProvider,
-		config: &config,
+		oidc:       oidcProvider,
+		config:     &config,
+		allowRoles: allowRoles,
 	}, nil
 }
 
@@ -217,7 +230,32 @@ func (p *LogtoProvider) GetUserData(ctx context.Context, token *oauth2.Token) (*
 		"phone_number":          userInfo.PhoneNumber,
 		"phone_number_verified": userInfo.PhoneNumberVerified,
 		"name":                  userInfo.Name,
+		"roles":                 userInfo.Roles,
 	}).Info("Successfully parsed user info from Logto")
+
+	// 验证用户角色
+	if len(p.allowRoles) > 0 {
+		hasAllowedRole := false
+		for _, role := range userInfo.Roles {
+			for _, allowedRole := range p.allowRoles {
+				if role == allowedRole {
+					hasAllowedRole = true
+					break
+				}
+			}
+			if hasAllowedRole {
+				break
+			}
+		}
+
+		if !hasAllowedRole {
+			logrus.WithFields(logrus.Fields{
+				"user_roles":    userInfo.Roles,
+				"allowed_roles": p.allowRoles,
+			}).Error("User does not have any of the allowed roles")
+			return nil, fmt.Errorf("user does not have any of the allowed roles")
+		}
+	}
 
 	var data UserProvidedData
 
