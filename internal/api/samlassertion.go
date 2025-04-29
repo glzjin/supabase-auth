@@ -114,6 +114,28 @@ func (a *SAMLAssertion) Email() string {
 	return ""
 }
 
+// Phone returns the best guess for a phone number.
+func (a *SAMLAssertion) Phone() string {
+	attributeNames := []string{
+		"urn:oid:2.5.4.20", // OID for telephoneNumber
+		"http://schemas.xmlsoap.org/ws/2005/05/identity/claims/telephone",
+		"http://schemas.xmlsoap.org/claims/telephone",
+		"telephoneNumber",
+		"phone",
+		"mobile",
+	}
+
+	for _, name := range attributeNames {
+		for _, attr := range a.Attribute(name) {
+			if attr.Value != "" {
+				return attr.Value
+			}
+		}
+	}
+
+	return ""
+}
+
 // Process processes this assertion according to the SAMLAttributeMapping. Never returns nil.
 func (a *SAMLAssertion) Process(mapping models.SAMLAttributeMapping) map[string]interface{} {
 	ret := make(map[string]interface{})

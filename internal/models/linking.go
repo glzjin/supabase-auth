@@ -40,7 +40,7 @@ type AccountLinkingResult struct {
 	User           *User
 	Identities     []*Identity
 	LinkingDomain  string
-	CandidateEmail provider.Email
+	CandidatePhone provider.Phone
 }
 
 // DetermineAccountLinking uses the provided data and database state to compute a decision on whether:
@@ -50,16 +50,17 @@ type AccountLinkingResult struct {
 // - It's not possible to decide due to data inconsistency (MultipleAccounts) and the caller should decide
 //
 // Errors signal failure in processing only, like database access errors.
-func DetermineAccountLinking(tx *storage.Connection, config *conf.GlobalConfiguration, emails []provider.Email, aud, providerName, sub string) (AccountLinkingResult, error) {
-	var verifiedEmails []string
-	var candidateEmail provider.Email
-	for _, email := range emails {
-		if email.Verified || config.Mailer.Autoconfirm {
-			verifiedEmails = append(verifiedEmails, strings.ToLower(email.Email))
+func DetermineAccountLinking(tx *storage.Connection, config *conf.GlobalConfiguration, phones []provider.Phone, aud, providerName, sub string) (AccountLinkingResult, error) {
+	var verifiedPhones []string
+	var candidatePhone provider.Phone
+
+	for _, phone := range phones {
+		if phone.Verified || config.Mailer.Autoconfirm {
+			verifiedPhones = append(verifiedPhones, strings.ToLower(phone.Phone))
 		}
-		if email.Primary {
-			candidateEmail = email
-			candidateEmail.Email = strings.ToLower(email.Email)
+		if phone.Primary {
+			candidatePhone = phone
+			candidatePhone.Phone = strings.ToLower(phone.Phone)
 		}
 	}
 
@@ -73,13 +74,13 @@ func DetermineAccountLinking(tx *storage.Connection, config *conf.GlobalConfigur
 
 		// we overwrite the email with the existing user's email since the user
 		// could have an empty email
-		candidateEmail.Email = user.GetEmail()
+		candidatePhone.Phone = user.GetPhone()
 		return AccountLinkingResult{
 			Decision:       AccountExists,
 			User:           user,
 			Identities:     []*Identity{identity},
 			LinkingDomain:  GetAccountLinkingDomain(providerName),
-			CandidateEmail: candidateEmail,
+			CandidatePhone: candidatePhone,
 		}, nil
 	} else if !IsNotFoundError(terr) {
 		return AccountLinkingResult{}, terr
@@ -90,33 +91,33 @@ func DetermineAccountLinking(tx *storage.Connection, config *conf.GlobalConfigur
 
 	// this is the linking domain for the new identity
 	candidateLinkingDomain := GetAccountLinkingDomain(providerName)
-	if len(verifiedEmails) == 0 {
+	if len(verifiedPhones) == 0 {
 		// if there are no verified emails, we always decide to create a new account
-		user, terr := IsDuplicatedEmail(tx, candidateEmail.Email, aud, nil)
+		user, terr := IsDuplicatedPhone(tx, candidatePhone.Phone, aud)
 		if terr != nil {
 			return AccountLinkingResult{}, terr
 		}
-		if user != nil {
-			candidateEmail.Email = ""
+		if user != false {
+			candidatePhone.Phone = ""
 		}
 		return AccountLinkingResult{
 			Decision:       CreateAccount,
 			LinkingDomain:  candidateLinkingDomain,
-			CandidateEmail: candidateEmail,
+			CandidatePhone: candidatePhone,
 		}, nil
 	}
 
 	var similarIdentities []*Identity
 	var similarUsers []*User
 	// look for similar identities and users based on email
-	if terr := tx.Q().Eager().Where("email = any (?)", verifiedEmails).All(&similarIdentities); terr != nil {
+	if terr := tx.Q().Eager().Where("phone = any (?)", verifiedPhones).All(&similarIdentities); terr != nil {
 		return AccountLinkingResult{}, terr
 	}
 
 	if !strings.HasPrefix(providerName, "sso:") {
 		// there can be multiple user accounts with the same email when is_sso_user is true
 		// so we just do not consider those similar user accounts
-		if terr := tx.Q().Eager().Where("email = any (?) and is_sso_user = false", verifiedEmails).All(&similarUsers); terr != nil {
+		if terr := tx.Q().Eager().Where("phone = any (?) and is_sso_user = false", verifiedPhones).All(&similarUsers); terr != nil {
 			return AccountLinkingResult{}, terr
 		}
 	}
@@ -144,7 +145,7 @@ func DetermineAccountLinking(tx *storage.Connection, config *conf.GlobalConfigur
 				User:           similarUsers[0],
 				Identities:     linkingIdentities,
 				LinkingDomain:  candidateLinkingDomain,
-				CandidateEmail: candidateEmail,
+				CandidatePhone: candidatePhone,
 			}, nil
 		} else if len(similarUsers) > 1 {
 			// this shouldn't happen since there is a partial unique index on (email and is_sso_user = false)
@@ -152,7 +153,7 @@ func DetermineAccountLinking(tx *storage.Connection, config *conf.GlobalConfigur
 				Decision:       MultipleAccounts,
 				Identities:     linkingIdentities,
 				LinkingDomain:  candidateLinkingDomain,
-				CandidateEmail: candidateEmail,
+				CandidatePhone: candidatePhone,
 			}, nil
 		} else {
 			// there are no identities in the linking domain, we have to
@@ -160,7 +161,7 @@ func DetermineAccountLinking(tx *storage.Connection, config *conf.GlobalConfigur
 			return AccountLinkingResult{
 				Decision:       CreateAccount,
 				LinkingDomain:  candidateLinkingDomain,
-				CandidateEmail: candidateEmail,
+				CandidatePhone: candidatePhone,
 			}, nil
 		}
 	}
@@ -178,7 +179,7 @@ func DetermineAccountLinking(tx *storage.Connection, config *conf.GlobalConfigur
 				Decision:       MultipleAccounts,
 				Identities:     linkingIdentities,
 				LinkingDomain:  candidateLinkingDomain,
-				CandidateEmail: candidateEmail,
+				CandidatePhone: candidatePhone,
 			}, nil
 		}
 	}
@@ -198,6 +199,6 @@ func DetermineAccountLinking(tx *storage.Connection, config *conf.GlobalConfigur
 		User:           user,
 		Identities:     linkingIdentities,
 		LinkingDomain:  candidateLinkingDomain,
-		CandidateEmail: candidateEmail,
+		CandidatePhone: candidatePhone,
 	}, nil
 }

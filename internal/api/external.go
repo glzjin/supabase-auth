@@ -174,18 +174,18 @@ func (a *API) internalExternalProviderCallback(w http.ResponseWriter, r *http.Re
 	}
 
 	userData := data.userData
-	if len(userData.Emails) <= 0 {
-		return apierrors.NewInternalServerError("Error getting user email from external provider")
+	if len(userData.Phones) <= 0 {
+		return apierrors.NewInternalServerError("Error getting user phone from external provider")
 	}
-	userData.Metadata.EmailVerified = false
-	for _, email := range userData.Emails {
-		if email.Primary {
-			userData.Metadata.Email = email.Email
-			userData.Metadata.EmailVerified = email.Verified
+	userData.Metadata.PhoneVerified = false
+	for _, phone := range userData.Phones {
+		if phone.Primary {
+			userData.Metadata.Phone = phone.Phone
+			userData.Metadata.PhoneVerified = phone.Verified
 			break
 		} else {
-			userData.Metadata.Email = email.Email
-			userData.Metadata.EmailVerified = email.Verified
+			userData.Metadata.Phone = phone.Phone
+			userData.Metadata.PhoneVerified = phone.Verified
 		}
 	}
 	providerAccessToken := data.token
@@ -280,7 +280,7 @@ func (a *API) createAccountFromExternalIdentity(tx *storage.Connection, r *http.
 		identityData = structs.Map(userData.Metadata)
 	}
 
-	decision, terr := models.DetermineAccountLinking(tx, config, userData.Emails, aud, providerType, userData.Metadata.Subject)
+	decision, terr := models.DetermineAccountLinking(tx, config, userData.Phones, aud, providerType, userData.Metadata.Subject)
 	if terr != nil {
 		return nil, terr
 	}
@@ -308,7 +308,7 @@ func (a *API) createAccountFromExternalIdentity(tx *storage.Connection, r *http.
 
 		params := &SignupParams{
 			Provider: providerType,
-			Email:    decision.CandidateEmail.Email,
+			Phone:    decision.CandidatePhone.Phone,
 			Aud:      aud,
 			Data:     identityData,
 		}
@@ -371,7 +371,7 @@ func (a *API) createAccountFromExternalIdentity(tx *storage.Connection, r *http.
 		if terr = user.RemoveUnconfirmedIdentities(tx, identity); terr != nil {
 			return nil, apierrors.NewInternalServerError("Error updating user").WithInternalError(terr)
 		}
-		if decision.CandidateEmail.Verified || config.Mailer.Autoconfirm {
+		if decision.CandidatePhone.Verified || config.Mailer.Autoconfirm {
 			if terr := models.NewAuditLogEntry(r, tx, user, models.UserSignedUpAction, "", map[string]interface{}{
 				"provider": providerType,
 			}); terr != nil {
@@ -382,23 +382,7 @@ func (a *API) createAccountFromExternalIdentity(tx *storage.Connection, r *http.
 				return nil, apierrors.NewInternalServerError("Error updating user").WithInternalError(terr)
 			}
 		} else {
-			// Some providers, like web3 don't have email data.
-			// Treat these as if a confirmation email has been
-			// sent, although the user will be created without an
-			// email address.
-			emailConfirmationSent := false
-			if decision.CandidateEmail.Email != "" {
-				if terr = a.sendConfirmation(r, tx, user, models.ImplicitFlow); terr != nil {
-					return nil, terr
-				}
-				emailConfirmationSent = true
-			}
-			if !config.Mailer.AllowUnverifiedEmailSignIns {
-				if emailConfirmationSent {
-					return nil, storage.NewCommitWithError(apierrors.NewUnprocessableEntityError(apierrors.ErrorCodeProviderEmailNeedsVerification, fmt.Sprintf("Unverified email with %v. A confirmation email has been sent to your %v email", providerType, providerType)))
-				}
-				return nil, storage.NewCommitWithError(apierrors.NewUnprocessableEntityError(apierrors.ErrorCodeProviderEmailNeedsVerification, fmt.Sprintf("Unverified email with %v. Verify the email with %v in order to sign in", providerType, providerType)))
-			}
+			return nil, storage.NewCommitWithError(apierrors.NewUnprocessableEntityError(apierrors.ErrorCodeProviderEmailNeedsVerification, fmt.Sprintf("Unverified phone with %v. Verify the phone with %v in order to sign in", providerType, providerType)))
 		}
 	} else {
 		if terr := models.NewAuditLogEntry(r, tx, user, models.LoginAction, "", map[string]interface{}{
@@ -420,18 +404,18 @@ func (a *API) processInvite(r *http.Request, tx *storage.Connection, userData *p
 		return nil, apierrors.NewInternalServerError("Database error finding user").WithInternalError(err)
 	}
 
-	var emailData *provider.Email
-	var emails []string
-	for i, e := range userData.Emails {
-		emails = append(emails, e.Email)
-		if user.GetEmail() == e.Email {
-			emailData = &userData.Emails[i]
+	var phoneData *provider.Phone
+	var phones []string
+	for i, e := range userData.Phones {
+		phones = append(phones, e.Phone)
+		if user.GetPhone() == e.Phone {
+			phoneData = &userData.Phones[i]
 			break
 		}
 	}
 
-	if emailData == nil {
-		return nil, apierrors.NewBadRequestError(apierrors.ErrorCodeValidationFailed, "Invited email does not match emails from external provider").WithInternalMessage("invited=%s external=%s", user.Email, strings.Join(emails, ", "))
+	if phoneData == nil {
+		return nil, apierrors.NewBadRequestError(apierrors.ErrorCodeValidationFailed, "Invited phone does not match phones from external provider").WithInternalMessage("invited=%s external=%s", user.Phone, strings.Join(phones, ", "))
 	}
 
 	var identityData map[string]interface{}

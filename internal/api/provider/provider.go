@@ -73,8 +73,15 @@ type Email struct {
 	Primary  bool
 }
 
+type Phone struct {
+	Phone    string
+	Verified bool
+	Primary  bool
+}
+
 // UserProvidedData is a struct that contains the user's data returned from the oauth provider
 type UserProvidedData struct {
+	Phones   []Phone
 	Emails   []Email
 	Metadata *Claims
 }

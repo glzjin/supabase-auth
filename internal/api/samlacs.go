@@ -207,16 +207,16 @@ func (a *API) handleSamlAcs(w http.ResponseWriter, r *http.Request) error {
 
 	claims := assertion.Process(ssoProvider.SAMLProvider.AttributeMapping)
 
-	email, ok := claims["email"].(string)
-	if !ok || email == "" {
+	phone, ok := claims["phone"].(string)
+	if !ok || phone == "" {
 		// mapping does not identify the email attribute, try to figure it out
-		email = assertion.Email()
+		phone = assertion.Phone()
 	}
 
-	if email == "" {
+	if phone == "" {
 		return apierrors.NewBadRequestError(apierrors.ErrorCodeSAMLAssertionNoEmail, "SAML Assertion does not contain an email address")
 	} else {
-		claims["email"] = email
+		claims["phone"] = phone
 	}
 
 	jsonClaims, err := json.Marshal(claims)
@@ -231,8 +231,8 @@ func (a *API) handleSamlAcs(w http.ResponseWriter, r *http.Request) error {
 
 	providerClaims.Subject = userID
 	providerClaims.Issuer = ssoProvider.SAMLProvider.EntityID
-	providerClaims.Email = email
-	providerClaims.EmailVerified = true
+	providerClaims.Phone = phone
+	providerClaims.PhoneVerified = true
 
 	providerClaimsMap := structs.Map(providerClaims)
 
@@ -245,8 +245,8 @@ func (a *API) handleSamlAcs(w http.ResponseWriter, r *http.Request) error {
 
 	var userProvidedData provider.UserProvidedData
 
-	userProvidedData.Emails = append(userProvidedData.Emails, provider.Email{
-		Email:    email,
+	userProvidedData.Phones = append(userProvidedData.Phones, provider.Phone{
+		Phone:    phone,
 		Verified: true,
 		Primary:  true,
 	})
