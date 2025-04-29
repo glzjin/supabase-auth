@@ -11,6 +11,7 @@ import (
 
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/sirupsen/logrus"
 	"github.com/supabase/auth/internal/conf"
 	"golang.org/x/oauth2"
 )
@@ -179,6 +180,11 @@ func (p *LogtoProvider) GetUserData(ctx context.Context, token *oauth2.Token) (*
 
 	req.Header.Set("Authorization", "Bearer "+token.AccessToken)
 
+	logrus.WithFields(logrus.Fields{
+		"endpoint": p.config.UserInfoEndpoint,
+		"token":    token.AccessToken[:10] + "...", // 只显示token的前10个字符
+	}).Info("Requesting user info from Logto")
+
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -186,15 +192,29 @@ func (p *LogtoProvider) GetUserData(ctx context.Context, token *oauth2.Token) (*
 	}
 	defer resp.Body.Close()
 
+	body, _ := io.ReadAll(resp.Body)
+	logrus.WithFields(logrus.Fields{
+		"status": resp.StatusCode,
+		"body":   string(body),
+	}).Info("Received response from Logto user info endpoint")
+
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("failed to get user info: status=%d body=%s", resp.StatusCode, string(body))
 	}
 
 	var userInfo LogtoUserInfo
-	if err := json.NewDecoder(resp.Body).Decode(&userInfo); err != nil {
+	if err := json.Unmarshal(body, &userInfo); err != nil {
 		return nil, fmt.Errorf("failed to decode user info: %w", err)
 	}
+
+	logrus.WithFields(logrus.Fields{
+		"sub":            userInfo.Sub,
+		"email":          userInfo.Email,
+		"email_verified": userInfo.EmailVerified,
+		"phone":          userInfo.Phone,
+		"phone_verified": userInfo.PhoneVerified,
+		"name":           userInfo.Name,
+	}).Info("Successfully parsed user info from Logto")
 
 	var data UserProvidedData
 
@@ -205,12 +225,14 @@ func (p *LogtoProvider) GetUserData(ctx context.Context, token *oauth2.Token) (*
 			Verified: userInfo.PhoneVerified,
 			Primary:  true,
 		})
+		logrus.WithField("phone", userInfo.Phone).Info("Using phone as primary contact")
 	} else if userInfo.Email != "" {
 		data.Emails = append(data.Emails, Email{
 			Email:    userInfo.Email,
 			Verified: userInfo.EmailVerified,
 			Primary:  true,
 		})
+		logrus.WithField("email", userInfo.Email).Info("Using email as primary contact")
 	}
 
 	data.Metadata = &Claims{
