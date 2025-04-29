@@ -55,7 +55,7 @@ func DetermineAccountLinking(tx *storage.Connection, config *conf.GlobalConfigur
 	var candidatePhone provider.Phone
 
 	for _, phone := range phones {
-		if phone.Verified || config.Mailer.Autoconfirm {
+		if phone.Verified {
 			verifiedPhones = append(verifiedPhones, strings.ToLower(phone.Phone))
 		}
 		if phone.Primary {
@@ -93,11 +93,11 @@ func DetermineAccountLinking(tx *storage.Connection, config *conf.GlobalConfigur
 	candidateLinkingDomain := GetAccountLinkingDomain(providerName)
 	if len(verifiedPhones) == 0 {
 		// if there are no verified emails, we always decide to create a new account
-		user, terr := IsDuplicatedPhone(tx, candidatePhone.Phone, aud)
+		userExists, terr := IsDuplicatedPhone(tx, candidatePhone.Phone, aud)
 		if terr != nil {
 			return AccountLinkingResult{}, terr
 		}
-		if user != false {
+		if userExists == true {
 			candidatePhone.Phone = ""
 		}
 		return AccountLinkingResult{

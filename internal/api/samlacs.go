@@ -7,6 +7,7 @@ import (
 	"encoding/xml"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/crewjam/saml"
@@ -214,9 +215,39 @@ func (a *API) handleSamlAcs(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	if phone == "" {
-		return apierrors.NewBadRequestError(apierrors.ErrorCodeSAMLAssertionNoEmail, "SAML Assertion does not contain an email address")
+		return apierrors.NewBadRequestError(apierrors.ErrorCodeSAMLAssertionNoPhone, "SAML Assertion does not contain an phone")
 	} else {
 		claims["phone"] = phone
+	}
+
+	// Extract roles from claims
+	roles, ok := claims["roles"].(string)
+	if !ok || roles == "" {
+		return apierrors.NewBadRequestError(apierrors.ErrorCodeValidationFailed, "SAML Assertion does not contain roles")
+	}
+
+	// Split roles into a slice
+	roleList := strings.Split(roles, ",")
+
+	// Get allowed roles from configuration
+	allowedRoles := strings.Split(a.config.SAML.AllowRoles, ",")
+
+	// Check if any role from the assertion is in the allowed roles
+	roleAllowed := false
+	for _, role := range roleList {
+		for _, allowedRole := range allowedRoles {
+			if role == allowedRole {
+				roleAllowed = true
+				break
+			}
+		}
+		if roleAllowed {
+			break
+		}
+	}
+
+	if !roleAllowed {
+		return apierrors.NewForbiddenError(apierrors.ErrorCodeSAMLRoleNotAllowed, "User's roles are not allowed")
 	}
 
 	jsonClaims, err := json.Marshal(claims)
