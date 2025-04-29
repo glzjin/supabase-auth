@@ -17,7 +17,7 @@ import (
 type SAMLConfiguration struct {
 	Enabled                  bool          `json:"enabled"`
 	PrivateKey               string        `json:"-" split_words:"true"`
-	AllowRoles               string        `json:"allow_roles"`
+	AllowRoles               string        `json:"-"  split_words:"true"`
 	AllowEncryptedAssertions bool          `json:"allow_encrypted_assertions" split_words:"true"`
 	RelayStateValidityPeriod time.Duration `json:"relay_state_validity_period" split_words:"true"`
 

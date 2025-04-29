@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"encoding/xml"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
@@ -57,6 +58,15 @@ func (a *API) SamlAcs(w http.ResponseWriter, r *http.Request) error {
 		http.Redirect(w, r, u.String(), http.StatusSeeOther)
 	}
 	return nil
+}
+
+func ParseRoles(rolesStr string) ([]string, error) {
+	var roles []string
+	// 尝试解析 JSON 字符串
+	if err := json.Unmarshal([]byte(rolesStr), &roles); err != nil {
+		return nil, fmt.Errorf("无法解析角色列表: %w", err)
+	}
+	return roles, nil
 }
 
 // handleSamlAcs implements the main Assertion Consumer Service endpoint behavior.
@@ -232,8 +242,13 @@ func (a *API) handleSamlAcs(w http.ResponseWriter, r *http.Request) error {
 		claims["roles"] = roles
 	}
 
-	// Split roles into a slice
-	roleList := strings.Split(roles, ",")
+	rolesStr := claims["roles"].(string) // 从 claims 中获取 roles 字符串
+	roleList, err := ParseRoles(rolesStr)
+	if err != nil {
+		// 处理解析错误，例如返回错误响应
+		log.Println("Error parsing roles:", err)
+		return apierrors.NewBadRequestError(apierrors.ErrorCodeValidationFailed, "SAML Assertion does not contain roles")
+	}
 
 	// Get allowed roles from configuration
 	allowedRoles := strings.Split(a.config.SAML.AllowRoles, ",")
