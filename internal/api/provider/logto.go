@@ -2,7 +2,10 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"strings"
 	"time"
 
@@ -29,6 +32,16 @@ type LogtoIDTokenClaims struct {
 	EmailVerified bool   `json:"email_verified"`
 	Name          string `json:"name"`
 	Picture       string `json:"picture"`
+}
+
+type LogtoUserInfo struct {
+	Sub           string `json:"sub"`
+	Email         string `json:"email"`
+	EmailVerified bool   `json:"email_verified"`
+	Name          string `json:"name"`
+	Picture       string `json:"picture"`
+	Phone         string `json:"phone"`
+	PhoneVerified bool   `json:"phone_verified"`
 }
 
 func parseLogtoIDToken(token *oidc.IDToken) (*oidc.IDToken, *UserProvidedData, error) {
@@ -76,6 +89,7 @@ func NewLogtoProvider(ctx context.Context, ext conf.OAuthProviderConfiguration, 
 		oidc.ScopeOpenID,
 		"profile",
 		"email",
+		"phone",
 	}
 
 	if scopes != "" {
@@ -109,21 +123,61 @@ func (p *LogtoProvider) GetOAuthToken(code string) (*oauth2.Token, error) {
 }
 
 func (p *LogtoProvider) GetUserData(ctx context.Context, token *oauth2.Token) (*UserProvidedData, error) {
-	verifier := p.oidc.Verifier(&oidc.Config{
-		ClientID: p.ClientID,
-	})
-
-	idToken, err := verifier.Verify(ctx, token.AccessToken)
+	// 使用 access token 获取用户信息
+	req, err := http.NewRequestWithContext(ctx, "GET", p.oidc.Endpoint().AuthURL+"/userinfo", nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to verify ID token: %w", err)
+		return nil, fmt.Errorf("failed to create user info request: %w", err)
 	}
 
-	_, data, err := parseLogtoIDToken(idToken)
+	req.Header.Set("Authorization", "Bearer "+token.AccessToken)
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get user info: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("failed to get user info: status=%d body=%s", resp.StatusCode, string(body))
 	}
 
-	return data, nil
+	var userInfo LogtoUserInfo
+	if err := json.NewDecoder(resp.Body).Decode(&userInfo); err != nil {
+		return nil, fmt.Errorf("failed to decode user info: %w", err)
+	}
+
+	var data UserProvidedData
+
+	// 如果存在手机号，优先使用手机号作为主要联系方式
+	if userInfo.Phone != "" {
+		data.Emails = append(data.Emails, Email{
+			Email:    userInfo.Phone,
+			Verified: userInfo.PhoneVerified,
+			Primary:  true,
+		})
+	} else if userInfo.Email != "" {
+		data.Emails = append(data.Emails, Email{
+			Email:    userInfo.Email,
+			Verified: userInfo.EmailVerified,
+			Primary:  true,
+		})
+	}
+
+	data.Metadata = &Claims{
+		Issuer:  p.oidc.Endpoint().AuthURL,
+		Subject: userInfo.Sub,
+		Name:    userInfo.Name,
+		Picture: userInfo.Picture,
+
+		// To be deprecated
+		AvatarURL:  userInfo.Picture,
+		FullName:   userInfo.Name,
+		ProviderId: userInfo.Sub,
+	}
+
+	return &data, nil
 }
 
 func (p *LogtoProvider) GetUserInfo(ctx context.Context, token *oauth2.Token) (*UserProvidedData, error) {

@@ -5,9 +5,7 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="063544ef-b9e9-42ae-965a-b22fb3332761" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/internal/api/external.go" beforeDir="false" afterPath="$PROJECT_DIR$/internal/api/external.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/internal/api/settings.go" beforeDir="false" afterPath="$PROJECT_DIR$/internal/api/settings.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/internal/conf/configuration.go" beforeDir="false" afterPath="$PROJECT_DIR$/internal/conf/configuration.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
